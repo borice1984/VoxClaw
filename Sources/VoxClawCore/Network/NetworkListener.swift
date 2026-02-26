@@ -40,6 +40,9 @@ public final class NetworkListener {
         self.voiceBindingCountProvider = voiceBindingCountProvider
 
         let params = NWParameters.tcp
+        if let ipOptions = params.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options {
+            ipOptions.version = .v4
+        }
         params.allowLocalEndpointReuse = true
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
             Log.network.error("Invalid port: \(self.port, privacy: .public)")
