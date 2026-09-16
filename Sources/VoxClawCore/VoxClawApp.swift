@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import Security
 import os
 import SwiftUI
 
@@ -382,7 +383,16 @@ final class AppCoordinator: SpeechQueueDelegate {
     let queue = SpeechQueueCoordinator()
     let voiceAssigner = VoiceAssigner(store: VoiceBindingStore(fileURL: VoiceBindingStore.defaultURL()))
     let peerBrowser = PeerBrowser()
-    let cloudRelay = CloudSpeechRelay()
+    /// `CKContainer(identifier:)` traps at launch when the process lacks the
+    /// iCloud container entitlement — which is the case for the unsigned SwiftPM
+    /// CLI binary (`swift build` → `voxclaw --listen`). Only construct the relay
+    /// when the entitlement is actually present; the LAN listener is unaffected.
+    let cloudRelay: CloudSpeechRelay? = AppCoordinator.hasICloudEntitlement ? CloudSpeechRelay() : nil
+
+    private static var hasICloudEntitlement: Bool {
+        guard let task = SecTaskCreateFromSelf(nil) else { return false }
+        return SecTaskCopyValueForEntitlement(task, "com.apple.developer.icloud-container-identifiers" as CFString, nil) != nil
+    }
     let deviceID = UUID().uuidString
     private var settingsRef: SettingsManager?
 
@@ -470,7 +480,10 @@ final class AppCoordinator: SpeechQueueDelegate {
             agentId: request.agentId,
             engine: request.engine
         )
-        let relay = cloudRelay
+        guard let relay = cloudRelay else {
+            Log.network.info("CloudKit relay unavailable: this build has no iCloud entitlement")
+            return
+        }
         Task.detached {
             do {
                 try await relay.send(payload)
